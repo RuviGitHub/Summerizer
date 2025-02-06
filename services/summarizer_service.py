@@ -1,10 +1,13 @@
 import pdfplumber
 import requests
 import logging
+import os
+from werkzeug.utils import secure_filename
 
 class SummarizerService:
     def __init__(self):
         from transformers import pipeline
+
         logging.info("Loading the Hugging Face summarization model...")
         self.summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
         logging.info("Model loaded successfully.")
@@ -31,12 +34,48 @@ class SummarizerService:
             summary_points = []
             for index, chunk in enumerate(chunks):
                 logging.info(f"Summarizing chunk {index + 1}/{len(chunks)}...")
-                summary = self.summarizer(chunk, max_length=150, min_length=50, do_sample=False)
-                summary_text = summary[0]['summary_text']
+                summary = self.summarizer(
+                    chunk, max_length=150, min_length=50, do_sample=False
+                )
+                summary_text = summary[0]["summary_text"]
                 summary_points.append(f"- {summary_text}")
                 logging.info(f"Chunk {index + 1} summarized successfully.")
 
             logging.info("All chunks summarized successfully.")
+            return "\n".join(summary_points)
+
+        except Exception as e:
+            logging.error(f"Error summarizing document: {e}")
+            return "Error summarizing document."
+
+    def summarize_dynamic(self, file):
+        try:
+            # Save the uploaded file temporarily
+            temp_pdf_path = secure_filename(file.filename)
+            file.save(temp_pdf_path)
+            logging.info(f"File saved temporarily at: {temp_pdf_path}")
+
+            # Extract text from the PDF
+            text = self.extract_text_from_pdf(temp_pdf_path)
+            logging.info("Text extracted from PDF.")
+
+            # Split and summarize the text
+            chunks = self.split_into_chunks(text, max_chunk_size=2048)
+            summary_points = []
+            for index, chunk in enumerate(chunks):
+                logging.info(f"Summarizing chunk {index + 1}/{len(chunks)}...")
+                summary = self.summarizer(
+                    chunk, max_length=150, min_length=50, do_sample=False
+                )
+                summary_text = summary[0]["summary_text"]
+                summary_points.append(f"- {summary_text}")
+                logging.info(f"Chunk {index + 1} summarized successfully.")
+
+            logging.info("All chunks summarized successfully.")
+
+            # Clean up the temporary file
+            os.remove(temp_pdf_path)
+
             return "\n".join(summary_points)
 
         except Exception as e:
@@ -69,5 +108,3 @@ class SummarizerService:
             chunks.append(" ".join(chunk))
 
         return chunks
-
-
